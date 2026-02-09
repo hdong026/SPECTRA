@@ -1,0 +1,13 @@
+Parameter,Value,MAE
+Patch Length,2,14.7675
+Patch Length,3,14.8726
+Patch Length,4,14.7934
+Patch Length,6,14.8914
+Patch Length,12,15.2436
+Frequency K,4,14.9263
+Frequency K,8,14.8701
+Frequency K,16,14.8322
+Frequency K,32,14.8179
+Frequency K,64,14.8936
+Frequency K,128,14.8953
+Frequency K,256,14.9681

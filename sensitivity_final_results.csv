@@ -1,0 +1,11 @@
+Parameter,Value,MAE
+Frequency K,128,
+Frequency K,16,
+Frequency K,32,
+Frequency K,64,
+Frequency K,8,
+Patch Length,12,
+Patch Length,16,
+Patch Length,24,
+Patch Length,4,
+Patch Length,8,
