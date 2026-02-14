@@ -19,6 +19,19 @@ Extensive experiments on **PeMS04, PeMS07, PeMS08, and PEMS-BAY** demonstrate th
 
 ---
 
+## 🧩 Model Architecture
+
+The overall framework of KASA-ST works in three cooperative phases to handle non-stationarity and spectral drift.
+
+<p align="center">
+  <img src="your_architecture_diagram.png" alt="KASA-ST Overall Architecture" width="800"/>
+</p>
+<p align="center">
+  <em>Figure 1: The proposed KASA-ST framework illustrating the Multi-scale Temporal Backbone, Hybrid Spatial Tuning, and Spectral Anchoring phases.</em>
+</p>
+
+---
+
 ## 🏗️ Project Structure
 
 The project is built upon the **BasicTS** framework.
