@@ -100,10 +100,6 @@ python scripts/data_preparation/PeMS04/generate_holost_data.py
 ```
 
 
-*Alternatively, you can run individual scripts inside each dataset folder (e.g., `PEMS04/generate_training_data.py`).*
-
-Data will be processed and saved in the directory specified by the `BasicTS` registry (usually defined in config files).
-
 ---
 
 ## 🚀 Usage
