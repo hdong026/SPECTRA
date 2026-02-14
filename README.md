@@ -156,7 +156,7 @@ KASA-ST effectively anchors long-horizon predictions to invariant frequency patt
 
 ### Sensitivity Analysis
 
-Hyperparameter sensitivity results for Patch Length () and Frequency Components () can be found in `sensitivity_analysis.png`.
+Hyperparameter sensitivity results for Patch Length () and Frequency Components () can be found in `figs/sensitivity_final.pdf`.
 
 ---
 
