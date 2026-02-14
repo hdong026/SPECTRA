@@ -93,9 +93,9 @@ cd scripts/data_preparation
 ```
 
 
-2. Run the generation scripts for the target datasets. For example, to prepare all datasets:
+2. Run the generation scripts for the target datasets. For example, to prepare PeMS04 datasets:
 ```bash
-bash all.sh
+python scripts/data_preparation/PeMS04/generate_holost_data.py
 
 ```
 
