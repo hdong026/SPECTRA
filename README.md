@@ -159,17 +159,31 @@ Comparison of KASA-ST with state-of-the-art baselines (Horizon = 12 steps).
 
 ---
 
-## 📈 Analysis & Visualization
+## 📉 Analysis & Visualization
+We verify the effectiveness of each component through extensive visualization.
+1. **Volatility Handling (Temporal Backbone)**
+The Multi-scale Temporal Backbone acts as a learnable filter. As shown below, it effectively disentangles the underlying smooth traffic trend (Red) from stochastic volatility in the raw data (Grey).
+<p align="center">
+  <img src="figs/backbone.png" alt="Figure 2: Visualization of Backbone Representations" width="60%">
+</p>
 
-### Spectral Drift Mitigation
+2. **Physical Inertia Gate (Spatial Tuning)**
+The gate adaptively regulates spatial receptivity. Intersections (Red) increase receptivity during peak hours, while Main Arteries (Blue) rely on their own temporal momentum (high inertia).
+<p align="center">
+  <img src="figs/figure3_gate.png" alt="Figure 3: Dynamic Spatial Regulation" width="60%">
+</p>
 
-KASA-ST effectively anchors long-horizon predictions to invariant frequency patterns.
+3. **Spectral Drift Mitigation (Spectral Anchoring)**
+Comparison of Power Spectral Density (PSD) on PeMS08. The MLP variant (Red) suffers from significant high-frequency attenuation ($f > 0.1$). In contrast, KASA-ST (Blue) closely tracks the Ground Truth, preserving sharp traffic oscillations.
+<p align="center">
+  <img src="figs/vis_flow_vs_prior.png" alt="Figure 4: Spectral Drift Analysis" width="60%">
+</p>
 
-*(Figure: Power Spectral Density comparison showing KASA-ST prevents high-frequency attenuation compared to MLP variants)*
-
-### Sensitivity Analysis
-
-Hyperparameter sensitivity results for Patch Length () and Frequency Components () can be found in `figs/sensitivity_final.pdf`.
+4. **Hyperparameter Sensitivity**
+Impact of Patch Length ($P$) and Frequency Components ($K$) on model performance. $P=4$ and $K=32$ yield the optimal balance between noise robustness and detail preservation.
+<p align="center">
+  <img src="figs/sensitivity_analysis.png" alt="Figure 5: Hyperparameter Sensitivity Analysis" width="80%">
+</p>
 
 ---
 
