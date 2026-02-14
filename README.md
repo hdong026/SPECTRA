@@ -177,11 +177,3 @@ If you find this repository useful for your research, please cite our paper:
 }
 
 ```
-
-## 📧 Contact
-
-For any questions, please open an issue or contact [Anonymous Email].
-
-这个 README 结构清晰，既展示了理论贡献，又提供了详细的复现步骤，非常适合学术论文的代码开源。
-
-```
