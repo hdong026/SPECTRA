@@ -170,7 +170,7 @@ The Multi-scale Temporal Backbone acts as a learnable filter. As shown below, it
 2. **Physical Inertia Gate (Spatial Tuning)**
 The gate adaptively regulates spatial receptivity. Intersections (Red) increase receptivity during peak hours, while Main Arteries (Blue) rely on their own temporal momentum (high inertia).
 <p align="center">
-  <img src="figs/figure3_gate.png" alt="Figure 3: Dynamic Spatial Regulation" width="60%">
+  <img src="figs/gate.png" alt="Figure 3: Dynamic Spatial Regulation" width="60%">
 </p>
 
 3. **Spectral Drift Mitigation (Spectral Anchoring)**
