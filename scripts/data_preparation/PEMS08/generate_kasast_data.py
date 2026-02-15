@@ -6,13 +6,13 @@ import argparse
 
 import numpy as np
 
-# 尝试导入，如果没有也不影响主逻辑
+# Try importing; if not available, main logic is unaffected
 try:
     from generate_adj_mx import generate_adj_pems08
 except ImportError:
     pass
 
-# 适配 BasicTS 路径
+# Adapt BasicTS path
 root_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 if root_path not in sys.path:
     sys.path.insert(0, root_path)
@@ -69,7 +69,7 @@ def generate_data(args: argparse.Namespace):
     # -------------------------------------------------------------------------
     print("Generating Prior Channel with Frequency Domain Filtering...")
     
-    # 1. 计算基础周平均 (同原代码)
+    # 1. Compute base weekly average (same as original)
     train_end = train_index[-1][1]
     train_data = data[:train_end, :, 0]
     train_mean, train_std = np.mean(train_data), np.std(train_data)
@@ -79,25 +79,24 @@ def generate_data(args: argparse.Namespace):
     train_reshaped = train_data[:num_weeks * steps_per_week].reshape(num_weeks, steps_per_week, n)
     weekly_profile = np.mean(train_reshaped, axis=0) # [2016, N]
     
-    # 2. 🔥 核心改进: FFT 低通滤波 (Frequency Domain Filtering)
-    # 目的: 去除周平均曲线中的高频抖动，只保留“主趋势”
+    # 2. Core improvement: FFT low-pass filter (Frequency Domain Filtering)
+    # Purpose: remove high-frequency jitter from weekly profile, keep“主趋势”
     
-    # 转到频域
+    # Transform to frequency domain
     fft_coeffs = np.fft.rfft(weekly_profile, axis=0)
     
-    # 定义截断频率 (Cutoff): 只保留前 k 个低频分量
-    # 例如保留前 10% 的频率 (通常能量集中在前几项)
-    # 这个参数可以调，越小曲线越平滑，越大越接近原数据
+    # Define cutoff: keep only the first k low-frequency components (e.g. top 10%;
+    # energy is usually concentrated in the first few). Tunable: smaller = smoother,
+    # larger = closer to raw data.
     top_k = int(len(fft_coeffs) * 0.1) 
     
-    # 高频部分置零 (Low-pass Filter)
+    # Zero out high-frequency components (low-pass filter)
     fft_coeffs[top_k:] = 0
     
-    # 逆变换回时域 (取实部)
+    # Inverse transform back to time domain (take real part)
     smooth_weekly_profile = np.fft.irfft(fft_coeffs, n=weekly_profile.shape[0], axis=0)
     
-    # 3. 平铺到全长并归一化
-    # 使用滤波后的 smooth_weekly_profile
+    # 3. Tile to full length and normalize (using filtered smooth_weekly_profile)
     prior_full = np.tile(smooth_weekly_profile, (l // steps_per_week + 1, 1))[:l]
     prior_norm = (prior_full - train_mean) / train_std
     prior_norm = prior_norm[..., np.newaxis]

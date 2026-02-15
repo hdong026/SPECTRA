@@ -2,12 +2,10 @@ from math import ceil
 import torch
 from torch import nn
 import torch.nn.functional as F
-from basicts.archs.arch_zoo.KASA_arch_v2.patch_emb import PatchEncoder
-from basicts.archs.arch_zoo.KASA_arch_v2.downsamp_emb import DownsampEncoder
-from basicts.archs.arch_zoo.KASA_arch_v2.gcn import ABCDSpatialModule
+from basicts.archs.arch_zoo.KASA_arch_v2.kasa_components import PatchEncoder, DownsampEncoder, ABCDSpatialModule
 
 # ==========================================
-# 最小限度的 KAN 定义 (为未来实验预留，本实验中可能不会用到)
+# Minimal KAN definition (reserved for future experiments; may not be used in this one)
 # ==========================================
 class SimpleKANLinear(nn.Module):
     def __init__(self, in_features, out_features, grid_size=5):
@@ -29,13 +27,11 @@ class SimpleKANLinear(nn.Module):
 class KASA_v2_wo_spectral(nn.Module):
     def __init__(self, **model_args):
         super(KASA_v2_wo_spectral, self).__init__()
-        # 参数保存
+        # Save config
         self.node_size = model_args["node_size"]
         self.input_len = model_args["input_len"]
         
-        # 🔥 关键点 1: 读取配置中的 input_dim
-        # 实验一配置: "input_dim": 3
-        # 完整版配置: "input_dim": 4
+        # Key 1: read input_dim from config (exp1: 3, full: 4)
         self.input_dim = model_args["input_dim"] 
         
         self.output_len = model_args["output_len"]
@@ -94,9 +90,7 @@ class KASA_v2_wo_spectral(nn.Module):
             light_alpha=model_args.get("light_alpha", 0.05),
         )
 
-        # 🔥 关键点 2: 强制子模块只接收 3 通道
-        # 无论 input_dim 是 3 还是 4，我们都只把前 3 个通道（Flow, TOD, DOW）传给 PatchEncoder
-        # 这样确保主干网络不受 Spectral 数据影响
+        # Key 2: force submodules to receive only 3 channels (Flow, TOD, DOW); backbone unaffected by Spectral
         encoder_input_dim = 3 
         
         self.patch_encoder = PatchEncoder(self.td_size, self.dw_size, self.td_codebook, self.dw_codebook, self.spa_codebook, self.if_time_in_day, self.if_day_in_week, self.if_spatial,
@@ -108,11 +102,10 @@ class KASA_v2_wo_spectral(nn.Module):
         # Main Residual (Standard LSTNN)
         self.residual = nn.Conv2d(in_channels=self.input_len, out_channels=self.output_len, kernel_size=(1, 1), bias=True)
         
-        # 🔥 关键点 3: 自适应初始化 KAN 分支
-        # 实验一: 当 input_dim=3 时，此分支不被初始化
+        # Key 3: init KAN branch only when input_dim > 3 (exp1: skip)
         if self.input_dim > 3:
             self.prior_kan = SimpleKANLinear(1, 1)
-            # 增加一个线性投影层，用于处理 input_len != output_len 的情况
+            # Linear projection when input_len != output_len
             if self.input_len != self.output_len:
                 self.time_proj = nn.Linear(self.input_len, self.output_len)
             print(">>> [KASA] Spectral Branch ENABLED (Full Model Mode) <<<")
@@ -125,8 +118,7 @@ class KASA_v2_wo_spectral(nn.Module):
         # A/C scheme: GCN-enhanced spatial codebook before temporal encoders.
         enhanced_spa_emb = self.spatial_module.get_enhanced_spatial_embedding(self.spa_codebook)
         
-        # 1. 准备主干输入 (只取前3通道)
-        # 无论 input_dim 是几，这里永远只切片前 3 个
+        # 1. Prepare backbone input (first 3 channels only)
         main_input = history_data[..., :3]
 
         # 2. Patching (Copy from LSTNN logic)
@@ -157,15 +149,14 @@ class KASA_v2_wo_spectral(nn.Module):
         history_flow = history_data[..., 0]  # [B, L, N]
         output = self.spatial_module.refine_prediction(output, history_flow)
         
-        # 🔥 关键点 4: 谱分支执行逻辑
-        # 实验一: input_dim=3，此分支跳过，相当于 w/o Spectral
+        # Key 4: spectral branch (skipped when input_dim=3, i.e. w/o Spectral)
         if self.input_dim > 3:
             prior_data = history_data[..., 3:4] # [B, L, N, 1]
             
             # KAN Processing
             kan_prior = self.prior_kan(prior_data)
             
-            # 时间步对齐 (如果输入输出长度不一致)
+            # Align time steps when input_len != output_len
             if self.input_len != self.output_len:
                 # [B, T_in, N, 1] -> [B, N, 1, T_in] -> Linear -> [B, N, 1, T_out] -> [B, T_out, N, 1]
                 kan_prior = kan_prior.permute(0, 2, 3, 1)

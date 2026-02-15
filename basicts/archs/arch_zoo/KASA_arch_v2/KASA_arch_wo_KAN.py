@@ -2,26 +2,22 @@ from math import ceil
 import torch
 from torch import nn
 import torch.nn.functional as F
-from basicts.archs.arch_zoo.KASA_arch_v2.patch_emb import PatchEncoder
-from basicts.archs.arch_zoo.KASA_arch_v2.downsamp_emb import DownsampEncoder
-from basicts.archs.arch_zoo.KASA_arch_v2.gcn import ABCDSpatialModule
+from basicts.archs.arch_zoo.KASA_arch_v2.kasa_components import PatchEncoder, DownsampEncoder, ABCDSpatialModule
 
 # ==========================================
-# 定义 SimpleMLP (用于替换 KAN)
+# SimpleMLP (used to replace KAN)
 # ==========================================
 class SimpleMLP(nn.Module):
     def __init__(self, in_features, out_features, hidden_dim=64):
         super(SimpleMLP, self).__init__()
-        # 一个标准的 2层 MLP: Linear -> ReLU -> Linear
-        # hidden_dim 设为 64，保证参数量甚至略多于 KAN (grid=5时参数很少)，
-        # 以防止审稿人说 MLP 输是因为参数太少。
+        # Standard 2-layer MLP: Linear -> ReLU -> Linear; hidden_dim=64 so params >= KAN (grid=5)
         self.net = nn.Sequential(
             nn.Linear(in_features, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, out_features)
         )
         
-        # 初始化
+        # Init
         for m in self.net:
             if isinstance(m, nn.Linear):
                 nn.init.kaiming_uniform_(m.weight)
@@ -34,12 +30,9 @@ class SimpleMLP(nn.Module):
 class KASA_v2_wo_KAN(nn.Module):
     def __init__(self, **model_args):
         super(KASA_v2_wo_KAN, self).__init__()
-        # 参数保存
+        # Save config. Exp2: input_dim=4 (use 4th channel but process with MLP)
         self.node_size = model_args["node_size"]
         self.input_len = model_args["input_len"]
-        
-        # 🔥 关键点 1: 读取配置
-        # 实验二配置: "input_dim": 4 (我们需要第4维数据，但用 MLP 处理)
         self.input_dim = model_args["input_dim"] 
         
         self.output_len = model_args["output_len"]
@@ -97,7 +90,7 @@ class KASA_v2_wo_KAN(nn.Module):
             light_alpha=model_args.get("light_alpha", 0.05),
         )
 
-        # 🔥 关键点 2: 依然只传 3 通道给主干
+        # Key 2: still only 3 channels to backbone
         encoder_input_dim = 3 
         
         self.patch_encoder = PatchEncoder(self.td_size, self.dw_size, self.td_codebook, self.dw_codebook, self.spa_codebook, self.if_time_in_day, self.if_day_in_week, self.if_spatial,
@@ -109,18 +102,15 @@ class KASA_v2_wo_KAN(nn.Module):
         # Main Residual
         self.residual = nn.Conv2d(in_channels=self.input_len, out_channels=self.output_len, kernel_size=(1, 1), bias=True)
         
-        # 🔥 关键点 3: 初始化 MLP 而不是 KAN
+        # Key 3: init MLP instead of KAN (1 -> 1)
         if self.input_dim > 3:
-            # 这里的输入输出依然是 1维 -> 1维
             self.prior_kan = SimpleMLP(in_features=1, out_features=1) 
-            
-            # 同样需要时间对齐层
+            # Time alignment layer when input_len != output_len
             if self.input_len != self.output_len:
                 self.time_proj = nn.Linear(self.input_len, self.output_len)
             
             print(">>> [KASA Ablation] Experiment 2: RBF-KAN replaced by SimpleMLP <<<")
         else:
-            # 如果配置错了写成了3，这里会报错提醒你
             print(">>> [WARNING] Input Dim is 3! MLP will NOT be used. Check your Config! <<<")
 
     def forward(self, history_data: torch.Tensor, future_data: torch.Tensor, batch_seen: int, epoch: int, train: bool, **kwargs) -> torch.Tensor:
@@ -128,7 +118,7 @@ class KASA_v2_wo_KAN(nn.Module):
         
         enhanced_spa_emb = self.spatial_module.get_enhanced_spatial_embedding(self.spa_codebook)
         
-        # 1. 主干输入
+        # 1. Backbone input
         main_input = history_data[..., :3]
 
         # 2. Patching
@@ -158,14 +148,11 @@ class KASA_v2_wo_KAN(nn.Module):
         history_flow = history_data[..., 0]
         output = self.spatial_module.refine_prediction(output, history_flow)
         
-        # 🔥 关键点 4: 执行 MLP 分支
+        # Key 4: run MLP branch (SimpleMLP)
         if self.input_dim > 3:
-            prior_data = history_data[..., 3:4] # [B, L, N, 1]
-            
-            # 这里调用的是 SimpleMLP
+            prior_data = history_data[..., 3:4]  # [B, L, N, 1]
             kan_prior = self.prior_kan(prior_data)
-            
-            # 时间步对齐
+            # Time-step alignment
             if self.input_len != self.output_len:
                 kan_prior = kan_prior.permute(0, 2, 3, 1)
                 kan_prior = self.time_proj(kan_prior)

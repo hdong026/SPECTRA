@@ -2,12 +2,10 @@ from math import ceil
 import torch
 from torch import nn
 import torch.nn.functional as F
-from basicts.archs.arch_zoo.KASA_arch_v2.patch_emb import PatchEncoder
-from basicts.archs.arch_zoo.KASA_arch_v2.downsamp_emb import DownsampEncoder
-from basicts.archs.arch_zoo.KASA_arch_v2.gcn import ABCDSpatialModule
+from basicts.archs.arch_zoo.KASA_arch_v2.kasa_components import PatchEncoder, DownsampEncoder, ABCDSpatialModule
 
 # ==========================================
-# 最小限度的 KAN 定义 (局部定义，不影响其他)
+# Minimal KAN definition (local; does not affect other modules)
 # ==========================================
 class SimpleKANLinear(nn.Module):
     def __init__(self, in_features, out_features, grid_size=5):
@@ -29,10 +27,10 @@ class SimpleKANLinear(nn.Module):
 class KASA_v2(nn.Module):
     def __init__(self, **model_args):
         super(KASA_v2, self).__init__()
-        # 参数保存
+        # Save config (input_dim=4 here)
         self.node_size = model_args["node_size"]
         self.input_len = model_args["input_len"]
-        self.input_dim = model_args["input_dim"] # 这里是4
+        self.input_dim = model_args["input_dim"]
         self.output_len = model_args["output_len"]
         self.patch_len = model_args["patch_len"]
         self.stride = model_args["stride"]
@@ -89,9 +87,7 @@ class KASA_v2(nn.Module):
             light_alpha=model_args.get("light_alpha", 0.05),
         )
 
-        # 🔥 关键修改 1: 强制传入 input_dim=3 给子模块
-        # 这样 patch_emb.py 就会创建 3 通道的卷积层，完美适配 concat(0,1,2)
-        # 这保证了主干网络和原版 LSTNN 100% 一致
+        # Key 1: force input_dim=3 for submodules -> 3-channel conv in patch_emb, backbone same as LSTNN
         encoder_input_dim = 3 
         
         self.patch_encoder = PatchEncoder(self.td_size, self.dw_size, self.td_codebook, self.dw_codebook, self.spa_codebook, self.if_time_in_day, self.if_day_in_week, self.if_spatial,
@@ -103,10 +99,8 @@ class KASA_v2(nn.Module):
         # Main Residual (Standard LSTNN)
         self.residual = nn.Conv2d(in_channels=self.input_len, out_channels=self.output_len, kernel_size=(1, 1), bias=True)
         
-        # 🔥 关键修改 2: 定义 KAN 旁路用于处理 Prior (第4通道)
+        # Key 2: KAN side branch for Prior (4th channel); [B,T,N,1] -> [B,T,N,1], per timestep
         if self.input_dim > 3:
-            # 输入: [B, T, N, 1] -> 输出: [B, T, N, 1]
-            # 为了简单，我们对每个时间步做独立变换
             self.prior_kan = SimpleKANLinear(1, 1)
     
     def forward(self, history_data: torch.Tensor, future_data: torch.Tensor, batch_seen: int, epoch: int, train: bool, **kwargs) -> torch.Tensor:
@@ -115,9 +109,7 @@ class KASA_v2(nn.Module):
         # A/C scheme: GCN-enhanced spatial codebook before temporal encoders.
         enhanced_spa_emb = self.spatial_module.get_enhanced_spatial_embedding(self.spa_codebook)
         
-        # 1. 准备主干输入 (只取前3通道)
-        # [B, L, N, 3] -> (Flow, TOD, DOW)
-        # 这样传给 encoder，维度就完美对齐了
+        # 1. Backbone input (first 3 channels: Flow, TOD, DOW)
         main_input = history_data[..., :3]
 
         # 2. Patching (Copy from LSTNN logic)
@@ -141,7 +133,7 @@ class KASA_v2(nn.Module):
         res_input = history_data[..., 0:1].permute(0, 1, 2, 3)
         res_out = self.residual(res_input)
 
-        # 🔥 【新增】如果是可视化模式，直接在这里返回骨干特征
+        # If visualization mode, return backbone features here
         if kwargs.get("return_backbone", False):
             return patch_predict + downsamp_predict
 
@@ -152,13 +144,10 @@ class KASA_v2(nn.Module):
         history_flow = history_data[..., 0]  # [B, L, N]
         output = self.spatial_module.refine_prediction(output, history_flow)
         
-        # 🔥 关键修改 3: 加上 KAN 处理后的 Prior
-        # 只有当 input_dim > 3 (即有 Prior 数据) 时才执行
+        # Key 3: add KAN-processed Prior (only when input_dim > 3)
         if self.input_dim > 3:
-            prior_data = history_data[..., 3:4] # [B, L, N, 1]
-            
-            # KAN Processing: [B, L, N, 1] -> [B, L, N, 1]
-            # 假设 OutputLen == InputLen
+            prior_data = history_data[..., 3:4]  # [B, L, N, 1]
+            # KAN: [B, L, N, 1] -> [B, L, N, 1]; assumes OutputLen == InputLen
             if output.shape == prior_data.shape:
                 kan_prior = self.prior_kan(prior_data)
                 output = output + kan_prior

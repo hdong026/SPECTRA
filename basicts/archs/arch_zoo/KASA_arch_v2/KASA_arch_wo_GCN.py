@@ -2,12 +2,10 @@ from math import ceil
 import torch
 from torch import nn
 import torch.nn.functional as F
-from basicts.archs.arch_zoo.KASA_arch_v2.patch_emb import PatchEncoder
-from basicts.archs.arch_zoo.KASA_arch_v2.downsamp_emb import DownsampEncoder
-from basicts.archs.arch_zoo.KASA_arch_v2.gcn import ABCDSpatialModule
+from basicts.archs.arch_zoo.KASA_arch_v2.kasa_components import PatchEncoder, DownsampEncoder, ABCDSpatialModule
 
 # ==========================================
-# 恢复标准 KAN 定义 (本实验只消融空间模块，谱模块要保持最强状态)
+# Restore standard KAN (ablate spatial only; keep spectral at full strength)
 # ==========================================
 class SimpleKANLinear(nn.Module):
     def __init__(self, in_features, out_features, grid_size=5):
@@ -29,11 +27,9 @@ class SimpleKANLinear(nn.Module):
 class KASA_v2_wo_GCN(nn.Module):
     def __init__(self, **model_args):
         super(KASA_v2_wo_GCN, self).__init__()
-        # 参数保存
+        # Save config. Exp3: input_dim must be 4 (keep spectral injection on)
         self.node_size = model_args["node_size"]
         self.input_len = model_args["input_len"]
-        
-        # 实验三配置: input_dim 必须是 4 (保持谱注入开启)
         self.input_dim = model_args["input_dim"] 
         
         self.output_len = model_args["output_len"]
@@ -65,8 +61,7 @@ class KASA_v2_wo_GCN(nn.Module):
             self.spa_codebook = nn.Parameter(torch.empty(self.node_size, self.d_spa))
             nn.init.xavier_uniform_(self.spa_codebook)
 
-        # 🔥 关键修改 1: 强制关闭所有高级图特性 (Hardcode Disable)
-        # 无论 Config 文件里怎么写，这里全部强制设为 False
+        # Key change 1: force all advanced graph features OFF (hardcoded)
         print(">>> [KASA Ablation] Experiment 3: FORCING Hybrid/Dynamic/Adaptive Spatial to FALSE <<<")
         print(">>> [KASA Ablation] Model will behave like a Static Graph Model <<<")
         
@@ -77,15 +72,12 @@ class KASA_v2_wo_GCN(nn.Module):
             if_spatial=self.if_spatial,
             spatial_scheme=self.spatial_scheme,
             adj_mx_path=model_args.get("adj_mx_path"),
-            use_gcn=model_args.get("use_gcn", False), # GCN 基础模块可以留着，但高级特性关掉
+            use_gcn=model_args.get("use_gcn", False),  # base GCN can stay; advanced features off
             gcn_hidden_dim=model_args.get("gcn_hidden_dim", 64),
-            
-            # --- 强制关闭区域 ---
-            use_dynamic_spatial=False,  # 关
-            use_adaptive_adj=False,     # 关
-            use_hybrid_graph=False,     # 关 (核心)
-            use_lightweight_spatial=False, # 关
-            # -------------------
+            use_dynamic_spatial=False,
+            use_adaptive_adj=False,
+            use_hybrid_graph=False,
+            use_lightweight_spatial=False,
             
             dyn_hidden_dim=model_args.get("dyn_hidden_dim", 64),
             dyn_topk=model_args.get("dyn_topk", 20),
@@ -111,10 +103,9 @@ class KASA_v2_wo_GCN(nn.Module):
         # Main Residual
         self.residual = nn.Conv2d(in_channels=self.input_len, out_channels=self.output_len, kernel_size=(1, 1), bias=True)
         
-        # 🔥 关键修改 2: 恢复 Spectral KAN
-        # 我们希望保留谱特征，只看空间模块的影响
+        # Key change 2: restore Spectral KAN (keep spectral, ablate spatial only)
         if self.input_dim > 3:
-            self.prior_kan = SimpleKANLinear(1, 1) # 恢复 KAN
+            self.prior_kan = SimpleKANLinear(1, 1)
             if self.input_len != self.output_len:
                 self.time_proj = nn.Linear(self.input_len, self.output_len)
             print(">>> [KASA] Spectral KAN Branch ENABLED (Full Spectral Mode) <<<")
@@ -147,8 +138,7 @@ class KASA_v2_wo_GCN(nn.Module):
 
         output = patch_predict + downsamp_predict + res_out
 
-        # Spatial Refinement (Static Only)
-        # 这里调用的 refine_prediction 内部会因为 use_hybrid_graph=False 而只执行基础 GCN 或 Static Graph 逻辑
+        # Spatial refinement (static only; use_hybrid_graph=False -> basic GCN / static graph)
         history_flow = history_data[..., 0]
         output = self.spatial_module.refine_prediction(output, history_flow)
         

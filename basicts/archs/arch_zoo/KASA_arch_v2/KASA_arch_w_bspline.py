@@ -2,12 +2,10 @@ from math import ceil
 import torch
 from torch import nn
 import torch.nn.functional as F
-from basicts.archs.arch_zoo.KASA_arch_v2.patch_emb import PatchEncoder
-from basicts.archs.arch_zoo.KASA_arch_v2.downsamp_emb import DownsampEncoder
-from basicts.archs.arch_zoo.KASA_arch_v2.gcn import ABCDSpatialModule
+from basicts.archs.arch_zoo.KASA_arch_v2.kasa_components import PatchEncoder, DownsampEncoder, ABCDSpatialModule
 
 # ==========================================
-# 标准 B-Spline KAN 定义 (Self-contained Implementation)
+# Standard B-Spline KAN definition (self-contained implementation)
 # ==========================================
 class BSplineKANLinear(nn.Module):
     def __init__(self, in_features, out_features, grid_size=5, spline_order=3, scale_noise=0.1, scale_base=1.0, scale_spline=1.0):
@@ -17,19 +15,18 @@ class BSplineKANLinear(nn.Module):
         self.grid_size = grid_size
         self.spline_order = spline_order
 
-        # 1. 基础线性变换 (SiLU 激活)
+        # 1. Base linear transform (SiLU activation)
         self.base_linear = nn.Linear(in_features, out_features)
         
-        # 2. B-Spline 参数
-        # grid: 覆盖 [-1, 1] 范围
+        # 2. B-Spline params: grid covers [-1, 1]
         h = (2.0) / grid_size
         grid = (torch.arange(-spline_order, grid_size + spline_order + 1) * h - 1.0)
-        self.register_buffer("grid", grid) # 固定网格，不作为参数训练
+        self.register_buffer("grid", grid)  # fixed grid, not trained
         
         # spline weights: [out, in, coeff_num]
         self.spline_weight = nn.Parameter(torch.Tensor(out_features, in_features, grid_size + spline_order))
         
-        # 初始化
+        # Init
         nn.init.kaiming_uniform_(self.base_linear.weight, a=0.1)
         with torch.no_grad():
             noise = (torch.rand(self.grid_size + self.spline_order, self.in_features, self.out_features) - 0.5) * scale_noise / self.grid_size
@@ -40,18 +37,17 @@ class BSplineKANLinear(nn.Module):
 
     def b_splines(self, x: torch.Tensor):
         """
-        计算 B-Spline 基函数 (递归法)
-        x: shape [..., 1] (因为我们处理的是单通道)
+        Compute B-Spline basis (recursive). x: shape [..., 1] (single channel).
         """
         assert x.dim() >= 2 and x.size(-1) == self.in_features
         
         grid: torch.Tensor = self.grid
         x = x.unsqueeze(-1) # [..., in, 1]
         
-        # 0阶 B-Spline (Step Function)
+        # 0-order B-Spline (step function)
         bases = ((x >= grid[:-1]) & (x < grid[1:])).to(x.dtype)
         
-        # 递归计算高阶 (通常是3阶)
+        # Recursive higher order (typically 3)
         for k in range(1, self.spline_order + 1):
             bases = (
                 (x - grid[: -(k + 1)]) / (grid[k:-1] - grid[: -(k + 1)]) * bases[..., :-1]
@@ -65,9 +61,7 @@ class BSplineKANLinear(nn.Module):
         # 1. Base Branch (SiLU + Linear)
         base_output = self.base_linear(F.silu(x))
         
-        # 2. Spline Branch
-        # 为了计算稳定，先将输入归一化到 [-1, 1] 附近 (假设输入已经标准化)
-        # 如果输入超出范围，Spline 会输出 0，这正是 Grid Dependency 的缺点
+        # 2. Spline branch (input assumed normalized near [-1,1]; out-of-range -> 0, grid dependency)
         bases = self.b_splines(x) # [B, T, N, in, coeff_num]
         
         # Einsum: [batch..., in, coeff] * [out, in, coeff] -> [batch..., out]
@@ -82,7 +76,7 @@ class KASA_v2_w_bspline(nn.Module):
         self.node_size = model_args["node_size"]
         self.input_len = model_args["input_len"]
         
-        # 实验四配置: input_dim=4
+        # Exp4 config: input_dim=4
         self.input_dim = model_args["input_dim"] 
         
         self.output_len = model_args["output_len"]
@@ -114,7 +108,7 @@ class KASA_v2_w_bspline(nn.Module):
             self.spa_codebook = nn.Parameter(torch.empty(self.node_size, self.d_spa))
             nn.init.xavier_uniform_(self.spa_codebook)
 
-        # 恢复正常的 Spatial Module (控制变量，只对比 KAN)
+        # Normal Spatial Module (control variable; only KAN is ablated)
         self.spatial_module = ABCDSpatialModule(
             node_size=self.node_size,
             input_len=self.input_len,
@@ -152,9 +146,8 @@ class KASA_v2_w_bspline(nn.Module):
         # Main Residual
         self.residual = nn.Conv2d(in_channels=self.input_len, out_channels=self.output_len, kernel_size=(1, 1), bias=True)
         
-        # 🔥 关键修改: 使用 B-Spline KAN 替换 RBF KAN
+        # Key change: replace RBF KAN with B-Spline KAN (BSplineKANLinear above)
         if self.input_dim > 3:
-            # 使用上面定义的 BSplineKANLinear
             self.prior_kan = BSplineKANLinear(in_features=1, out_features=1, grid_size=5, spline_order=3)
             
             if self.input_len != self.output_len:
@@ -193,11 +186,9 @@ class KASA_v2_w_bspline(nn.Module):
         history_flow = history_data[..., 0]
         output = self.spatial_module.refine_prediction(output, history_flow)
         
-        # 🔥 执行 B-Spline KAN
+        # Run B-Spline KAN
         if self.input_dim > 3:
-            prior_data = history_data[..., 3:4] # [B, L, N, 1]
-            
-            # 这里的 prior_kan 是 BSplineKANLinear
+            prior_data = history_data[..., 3:4]  # [B, L, N, 1]
             kan_prior = self.prior_kan(prior_data)
             
             if self.input_len != self.output_len:
