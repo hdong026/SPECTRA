@@ -97,7 +97,7 @@ pip install -r requirements.txt
 
 ## 📂 Data Preparation
 
-We use standard traffic benchmarks: **PeMS04, PeMS07, PeMS08, and PEMS-BAY**.
+We use standard traffic benchmarks: **PeMS04, PeMS07, PeMS08, and PEMS-BAY**. Please download raw PeMS dataset from [ASTGNN](https://github.com/guoshnBJTU/ASTGNN.git) and [DCRNN](https://github.com/liyaguang/DCRNN.git)
 
 1. Navigate to the data preparation script directory:
 ```bash
