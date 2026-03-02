@@ -1,2 +1,30 @@
-checkpoints
-datasets
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# VSCode / IDE
+.vscode/
+.idea/
+
+# Data & outputs
+datasets/
+checkpoints/
+predictions/
+diagnostics/
+*.pt
+*.pth
+*.npz
+*.pkl
+*.ckpt
+
+# Logs
+*.log
+nohup.out
+
+# OS
+.DS_Store

@@ -6,64 +6,62 @@ from argparse import ArgumentParser
 root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if root_path not in sys.path:
     sys.path.insert(0, root_path)
+
 import torch
 from basicts import launch_training
-from basicts.data.dataset import TimeSeriesForecastingDataset
 
-torch.set_num_threads(1) # aviod high cpu avg usage
+# NEW: direct runner creation for eval-only
+from easytorch.config.utils import import_config
+from easytorch.config.utils import init_cfg
+from easytorch.core.runner import Runner  # only for type hints; not mandatory
+
+
+torch.set_num_threads(1)  # avoid high cpu avg usage
 
 
 def parse_args():
     parser = ArgumentParser(description="Run time series forecasting model in BasicTS framework!")
-    # parser.add_argument("-c", "--cfg", default="examples/DGCRN/DGCRN_METR-LA.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/GWNet/GWNet_METR-LA.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/STID/STID_METR-LA.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/DCRNN/DCRNN_METR-LA.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/GTS/GTS_PEMS03.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/STID/STID_PEMS-BAY.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/HI/HI_METR-LA.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/Autoformer/Autoformer_METR-LA_in96_out96.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/Autoformer/Autoformer_PEMS04_in96_out96.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/FEDformer/FEDformer_METR-LA_in96_out96.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/Informer/Informer_ETTh1.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/Informer/Informer_ETTh2.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/Informer/Informer_Electricity.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/Linear/Linear_ETTh1.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/Linear/Linear_ETTh2.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/Linear/Linear_Electricity.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/Linear/DLinear_ETTh1.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/Linear/DLinear_ETTh2.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/Linear/DLinear_Electricity.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/Linear/NLinear_Electricity.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/Linear/NLinear_ETTh1.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/Linear/NLinear_ETTh2.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/Autoformer/Autoformer_ETTh1.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/Autoformer/Autoformer_ETTh2.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/Autoformer/Autoformer_Electricity.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/FEDformer/FEDformer_ETTh1.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/FEDformer/FEDformer_ETTh2.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/FEDformer/FEDformer_Electricity.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/Pyraformer/Pyraformer_ETTh1.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/FEDformer/FEDformer_Weather.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/STID/STID_ExchangeRate.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/DGCRN/DGCRN_METR-LA.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/MTGNN/MTGNN_METR-LA.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/MegaCRN/MegaCRN_METR-LA.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/Informer/Informer_Weather.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/Pyraformer/Pyraformer_Weather.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/Autoformer/atfm_04.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/Autoformer/Autoformer_METR-LA.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/MLP/MLP_METR_LA.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/Crossformer/Crossformer_METR-LA.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/STNorm/STNorm_HangST.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/Pyraformer/Pyraformer_METR-LA_in96_out96.py", help="training config")
-    # parser.add_argument("-c", "--cfg", default="examples/PatchTST/PatchTST_ETTh1.py", help="training config")
     parser.add_argument("-c", "--cfg", default="examples/LSTNN/LSTNN_PEMS04.py", help="training config")
     parser.add_argument("--gpus", default="1", help="visible gpus")
+    # NEW: eval-only switch
+    parser.add_argument("--eval_only", action="store_true", help="Only run test() once, no training.")
     return parser.parse_args()
+
+
+def _run_eval_only(cfg_path: str, gpus: str):
+    """
+    Eval-only path:
+      - load cfg
+      - build runner
+      - rely on runner.test() to load RESUME_FROM (your base_tsf_runner already supports it)
+    """
+    # Set visible GPUs like launch_training does
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(gpus)
+
+    # Import + init cfg (easytorch utilities)
+    # init_cfg also expands ENV/paths similarly to training.
+    cfg = import_config(cfg_path, verbose=True)
+    cfg = init_cfg(cfg, save=False)
+
+    # Build runner (same as training would)
+    runner_cls = cfg["RUNNER"]
+    runner = runner_cls(cfg)
+
+    # IMPORTANT: runner.test() is decorated by master_only; in single GPU it's fine
+    runner.init_test(cfg)
+    runner.build_test_data_loader(cfg)
+
+    # If your runner needs model on device etc, BaseRunner usually handles in init.
+    # Here we simply call test().
+    runner.test()
+
 
 if __name__ == "__main__":
     args = parse_args()
 
-    launch_training(args.cfg, args.gpus)
-
+    mode = os.getenv("MODE", "train").lower()
+    # If MODE=test OR user passed --eval_only, go eval-only
+    if mode == "test" or args.eval_only:
+        _run_eval_only(args.cfg, args.gpus)
+    else:
+        launch_training(args.cfg, args.gpus)
